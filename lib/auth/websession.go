@@ -1,12 +1,12 @@
 package auth
 
 import (
-	"crypto"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/gravitational/teleport"
 	"github.com/gravitational/teleport/lib/services"
-	"github.com/gravitational/teleport/lib/tlsca"
 	"github.com/gravitational/teleport/lib/utils"
 
 	"github.com/gravitational/trace"
@@ -122,7 +122,7 @@ func (a *AuthenticateSSHRequest) CheckAndSetDefaults() error {
 	if err := a.AuthenticateUserRequest.CheckAndSetDefaults(); err != nil {
 		return trace.Wrap(err)
 	}
-	if len(PublicKey) == 0 {
+	if len(a.PublicKey) == 0 {
 		return trace.BadParameter("missing parameter 'public_key'")
 	}
 	compatibility, err := utils.CheckCompatibilityFlag(a.CompatibilityMode)
@@ -161,17 +161,27 @@ type TrustedCerts struct {
 	TLSCertificates [][]byte `json:"tls_certs"`
 }
 
-func authoritiesToTrustedCerts(authorities []services.CertAuthority) []TrustedCerts {
+// SSHCertPublicKeys returns a list of trusted host SSH certificate authority public keys
+func (c *TrustedCerts) SSHCertPublicKeys() ([]ssh.PublicKey, error) {
+	out := make([]ssh.PublicKey, 0, len(c.HostCertificates))
+	for _, keyBytes := range c.HostCertificates {
+		publicKey, _, _, _, err := ssh.ParseAuthorizedKey(keyBytes)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		out = append(out, publicKey)
+	}
+	return out, nil
+}
+
+// AuthoritiesToTrustedCerts serializes authorities to TrustedCerts data structure
+func AuthoritiesToTrustedCerts(authorities []services.CertAuthority) []TrustedCerts {
 	out := make([]TrustedCerts, len(authorities))
 	for i, ca := range authorities {
-		pairs := ca.GetTLSKeyPairs()
-		certs := TrustedCerts{
+		out[i] = TrustedCerts{
 			ClusterName:      ca.GetClusterName(),
 			HostCertificates: ca.GetCheckingKeys(),
-			TLSCertificates:  make([][]byte, len(pairs)),
-		}
-		for j, pair := range pairs {
-			certs.TLSCertificates[j] = pair.Cert
+			TLSCertificates:  services.TLSCerts(ca),
 		}
 	}
 	return out
@@ -191,7 +201,7 @@ func (s *AuthServer) AuthenticateSSHUser(req AuthenticateSSHRequest) (*SSHLoginR
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	hostCertAuthorities, err := auth.GetCertAuthorities(services.HostCA, false)
+	hostCertAuthorities, err := s.GetCertAuthorities(services.HostCA, false)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -209,6 +219,6 @@ func (s *AuthServer) AuthenticateSSHUser(req AuthenticateSSHRequest) (*SSHLoginR
 		Username:    req.Username,
 		Cert:        certs.ssh,
 		TLSCert:     certs.tls,
-		HostSigners: authoritiesToTrustedCerts(hostCertAuthorities),
+		HostSigners: AuthoritiesToTrustedCerts(hostCertAuthorities),
 	}, nil
 }

@@ -99,10 +99,14 @@ func (a *AuthCommand) ExportAuthorities(client auth.ClientI) error {
 		if err != nil {
 			return trace.Wrap(err)
 		}
-		if a.exportPrivateKeys {
-			fmt.Println(certAuthority.GetTLSPrivateKey())
+		if len(certAuthority.GetTLSKeyPairs()) != 1 {
+			return trace.BadParameter("expected one TLS key pair, got %v", len(certAuthority.GetTLSKeyPairs()))
 		}
-		fmt.Println(certAuthority.GetTLSCert())
+		keyPair := certAuthority.GetTLSKeyPairs()[0]
+		if a.exportPrivateKeys {
+			fmt.Println(keyPair.Key)
+		}
+		fmt.Println(keyPair.Cert)
 		return nil
 	}
 

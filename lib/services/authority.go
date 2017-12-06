@@ -181,6 +181,16 @@ type CertAuthority interface {
 	GetTLSKeyPairs() []TLSKeyPair
 }
 
+// TLSCerts returns TLS certificates from CA
+func TLSCerts(ca CertAuthority) [][]byte {
+	pairs := ca.GetTLSKeyPairs()
+	out := make([][]byte, len(pairs))
+	for i, pair := range pairs {
+		out[i] = append([]byte{}, pair.Cert...)
+	}
+	return out
+}
+
 // TLSKeyPair is a TLS key pair
 type TLSKeyPair struct {
 	// Cert is PEM encoded TLS cert

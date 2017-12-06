@@ -364,7 +364,7 @@ func (s *sessionCache) clearExpiredSessions() {
 }
 
 func (s *sessionCache) AuthWithOTP(user, pass string, otpToken string) (services.WebSession, error) {
-	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateWebUserRequest{
+	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateUserRequest{
 		Username: user,
 		OTP: &auth.OTPCreds{
 			Password: []byte(pass),
@@ -374,7 +374,7 @@ func (s *sessionCache) AuthWithOTP(user, pass string, otpToken string) (services
 }
 
 func (s *sessionCache) AuthWithoutOTP(user, pass string) (services.WebSession, error) {
-	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateWebUserRequest{
+	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateUserRequest{
 		Username: user,
 		Pass: &auth.PassCreds{
 			Password: []byte(pass),
@@ -387,7 +387,7 @@ func (s *sessionCache) GetU2FSignRequest(user, pass string) (*u2f.SignRequest, e
 }
 
 func (s *sessionCache) AuthWithU2FSignResponse(user string, response *u2f.SignResponse) (services.WebSession, error) {
-	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateWebUserRequest{
+	return s.proxyClient.AuthenticateWebUser(auth.AuthenticateUserRequest{
 		Username: user,
 		U2F: &auth.U2FSignResponseCreds{
 			SignResponse: *response,
@@ -395,61 +395,48 @@ func (s *sessionCache) AuthWithU2FSignResponse(user string, response *u2f.SignRe
 	})
 }
 
-func (s *sessionCache) GetCertificateWithoutOTP(c client.CreateSSHCertReq) (*client.SSHLoginResponse, error) {
-	method, err := auth.NewWebPasswordWithoutOTPAuth(c.User, []byte(c.Password))
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	clt, err := auth.NewTunClient("web.session.password-only", s.authServers, c.User, method, auth.TunDisableRefresh())
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	defer clt.Close()
-
-	return createCertificate(c.User, c.PubKey, c.TTL, c.Compatibility, clt)
+func (s *sessionCache) GetCertificateWithoutOTP(c client.CreateSSHCertReq) (*auth.SSHLoginResponse, error) {
+	return s.proxyClient.AuthenticateSSHUser(auth.AuthenticateSSHRequest{
+		AuthenticateUserRequest: auth.AuthenticateUserRequest{
+			Username: c.User,
+			Pass: &auth.PassCreds{
+				Password: []byte(c.Password),
+			},
+		},
+		PublicKey:         c.PubKey,
+		CompatibilityMode: c.Compatibility,
+		TTL:               c.TTL,
+	})
 }
 
-func (s *sessionCache) GetCertificateWithOTP(c client.CreateSSHCertReq) (*client.SSHLoginResponse, error) {
-	method, err := auth.NewWebPasswordAuth(c.User, []byte(c.Password), c.OTPToken)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
+func (s *sessionCache) GetCertificateWithOTP(c client.CreateSSHCertReq) (*auth.SSHLoginResponse, error) {
+	return s.proxyClient.AuthenticateSSHUser(auth.AuthenticateSSHRequest{
+		AuthenticateUserRequest: auth.AuthenticateUserRequest{
+			Username: c.User,
+			OTP: &auth.OTPCreds{
+				Password: []byte(c.Password),
+				Token:    c.OTPToken,
+			},
+		},
+		PublicKey:         c.PubKey,
+		CompatibilityMode: c.Compatibility,
+		TTL:               c.TTL,
+	})
 
-	clt, err := auth.NewTunClient("web.session.password+otp", s.authServers, c.User, method, auth.TunDisableRefresh())
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	defer clt.Close()
-
-	return createCertificate(c.User, c.PubKey, c.TTL, c.Compatibility, clt)
 }
 
-func createCertificate(user string, pubkey []byte, ttl time.Duration, compatibility string, clt auth.ClientI) (*client.SSHLoginResponse, error) {
-	userCert, hostCA, err := clt.GenerateUserCertBundle(pubkey, user, ttl, compatibility)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	return &client.SSHLoginResponse{
-		Cert:        userCert,
-		HostSigners: hostCA,
-	}, nil
-}
-
-func (s *sessionCache) GetCertificateWithU2F(c client.CreateSSHCertWithU2FReq) (*client.SSHLoginResponse, error) {
-	method, err := auth.NewWebU2FSignResponseAuth(c.User, &c.U2FSignResponse)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	clt, err := auth.NewTunClient("web.session-u2f", s.authServers, c.User, method, auth.TunDisableRefresh())
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	defer clt.Close()
-
-	return createCertificate(c.User, c.PubKey, c.TTL, c.Compatibility, clt)
+func (s *sessionCache) GetCertificateWithU2F(c client.CreateSSHCertWithU2FReq) (*auth.SSHLoginResponse, error) {
+	return s.proxyClient.AuthenticateSSHUser(auth.AuthenticateSSHRequest{
+		AuthenticateUserRequest: auth.AuthenticateUserRequest{
+			Username: c.User,
+			U2F: &auth.U2FSignResponseCreds{
+				SignResponse: c.U2FSignResponse,
+			},
+		},
+		PublicKey:         c.PubKey,
+		CompatibilityMode: c.Compatibility,
+		TTL:               c.TTL,
+	})
 }
 
 func (s *sessionCache) GetUserInviteInfo(token string) (user string, otpQRCode []byte, err error) {

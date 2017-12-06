@@ -300,7 +300,7 @@ func Init(cfg InitConfig, opts ...AuthServerOption) (*AuthServer, *Identity, err
 				Type:         services.HostCA,
 				SigningKeys:  [][]byte{priv},
 				CheckingKeys: [][]byte{pub},
-				TLSKeyPairs:  []services.TLSKeyPair{{CertPEM: certPEM, KeyPEM: keyPEM}},
+				TLSKeyPairs:  []services.TLSKeyPair{{Cert: certPEM, Key: keyPEM}},
 			},
 		}
 		if err := asrv.Trust.UpsertCertAuthority(hostCA); err != nil {
@@ -315,7 +315,7 @@ func Init(cfg InitConfig, opts ...AuthServerOption) (*AuthServer, *Identity, err
 		if err != nil {
 			return nil, nil, trace.Wrap(err)
 		}
-		hostCA.SetTLSKeyPairs([]services.TLSKeyPair{{CertPEM: certPEM, KeyPEM: keyPEM}})
+		hostCA.SetTLSKeyPairs([]services.TLSKeyPair{{Cert: certPEM, Key: keyPEM}})
 		if err := asrv.Trust.UpsertCertAuthority(hostCA); err != nil {
 			return nil, nil, trace.Wrap(err)
 		}
@@ -466,7 +466,10 @@ func initKeys(a *AuthServer, dataDir string, id IdentityID) (*Identity, error) {
 		}
 
 		log.Debugf("Writing keys to disk for %v.", id)
-		err = writeKeys(dataDir, id, packedKeys.Key, packedKeys.Cert, packedKeys.TLSCert, packedKeys.TLSCACert)
+		if len(packedKeys.TLSCACerts) != 1 {
+			return nil, trace.BadParameter("expecting one CA cert, got %v instead", len(packedKeys.TLSCACerts))
+		}
+		err = writeKeys(dataDir, id, packedKeys.Key, packedKeys.Cert, packedKeys.TLSCert, packedKeys.TLSCACerts[0])
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

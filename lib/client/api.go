@@ -1044,7 +1044,7 @@ func (tc *TeleportClient) Login(activateKey bool) (*Key, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	var response *SSHLoginResponse
+	var response *auth.SSHLoginResponse
 
 	switch pr.Auth.Type {
 	case teleport.Local:
@@ -1090,9 +1090,9 @@ func (tc *TeleportClient) Login(activateKey bool) (*Key, error) {
 	return key, nil
 }
 
-func (tc *TeleportClient) localLogin(secondFactor string, pub []byte) (*SSHLoginResponse, error) {
+func (tc *TeleportClient) localLogin(secondFactor string, pub []byte) (*auth.SSHLoginResponse, error) {
 	var err error
-	var response *SSHLoginResponse
+	var response *auth.SSHLoginResponse
 
 	switch secondFactor {
 	case teleport.OFF, teleport.OTP, teleport.TOTP, teleport.HOTP:
@@ -1113,8 +1113,8 @@ func (tc *TeleportClient) localLogin(secondFactor string, pub []byte) (*SSHLogin
 }
 
 // Adds a new CA as trusted CA for this client
-func (tc *TeleportClient) AddTrustedCA(ca *services.CertAuthorityV1) error {
-	return tc.LocalAgent().AddHostSignersToCache([]services.CertAuthorityV1{*ca})
+func (tc *TeleportClient) AddTrustedCA(ca services.CertAuthority) error {
+	return tc.LocalAgent().AddHostSignersToCache(auth.AuthoritiesToTrustedCerts([]services.CertAuthority{ca}))
 }
 
 func (tc *TeleportClient) AddKey(host string, key *Key) (*agent.AddedKey, error) {
@@ -1122,7 +1122,7 @@ func (tc *TeleportClient) AddKey(host string, key *Key) (*agent.AddedKey, error)
 }
 
 // directLogin asks for a password + HOTP token, makes a request to CA via proxy
-func (tc *TeleportClient) directLogin(secondFactorType string, pub []byte) (*SSHLoginResponse, error) {
+func (tc *TeleportClient) directLogin(secondFactorType string, pub []byte) (*auth.SSHLoginResponse, error) {
 	var err error
 
 	httpsProxyHostPort := tc.Config.ProxyWebHostPort()
@@ -1160,7 +1160,7 @@ func (tc *TeleportClient) directLogin(secondFactorType string, pub []byte) (*SSH
 }
 
 // samlLogin opens browser window and uses OIDC or SAML redirect cycle with browser
-func (tc *TeleportClient) ssoLogin(connectorID string, pub []byte, protocol string) (*SSHLoginResponse, error) {
+func (tc *TeleportClient) ssoLogin(connectorID string, pub []byte, protocol string) (*auth.SSHLoginResponse, error) {
 	log.Debugf("samlLogin start")
 	// ask the CA (via proxy) to sign our public key:
 	webProxyAddr := tc.Config.ProxyWebHostPort()
@@ -1177,7 +1177,7 @@ func (tc *TeleportClient) ssoLogin(connectorID string, pub []byte, protocol stri
 }
 
 // directLogin asks for a password and performs the challenge-response authentication
-func (tc *TeleportClient) u2fLogin(pub []byte) (*SSHLoginResponse, error) {
+func (tc *TeleportClient) u2fLogin(pub []byte) (*auth.SSHLoginResponse, error) {
 	// U2F login requires the official u2f-host executable
 	_, err := exec.LookPath("u2f-host")
 	if err != nil {

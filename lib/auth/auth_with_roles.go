@@ -72,7 +72,7 @@ func (a *AuthWithRoles) authConnectorAction(namespace string, resource string, v
 
 // AuthenticateWebUser authenticates web user, creates and  returns web session
 // in case if authentication is successfull
-func (a *AuthWithRoles) AuthenticateWebUser(req AuthenticateWebUserRequest) (services.WebSession, error) {
+func (a *AuthWithRoles) AuthenticateWebUser(req AuthenticateUserRequest) (services.WebSession, error) {
 	// authentication request has it's own authentication, however this limits the requests
 	// types to proxies to make it harder to break
 	if !a.checker.HasRole(string(teleport.RoleProxy)) {
@@ -83,7 +83,7 @@ func (a *AuthWithRoles) AuthenticateWebUser(req AuthenticateWebUserRequest) (ser
 
 // AuthenticateSSHUser authenticates SSH console user, creates and  returns a pair of signed TLS and SSH
 // short lived certificates as a result
-func (a *AuthWithRoles) AuthenticateSSHUser(req AuthenticateSSHUserRequest) (*SSHLoginResponse, error) {
+func (a *AuthWithRoles) AuthenticateSSHUser(req AuthenticateSSHRequest) (*SSHLoginResponse, error) {
 	// authentication request has it's own authentication, however this limits the requests
 	// types to proxies to make it harder to break
 	if !a.checker.HasRole(string(teleport.RoleProxy)) {
@@ -510,7 +510,7 @@ func (a *AuthWithRoles) GenerateUserCert(key []byte, username string, ttl time.D
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	return certs.sshPEM, nil
+	return certs.ssh, nil
 }
 
 func (a *AuthWithRoles) CreateSignupToken(user services.UserV1, ttl time.Duration) (token string, e error) {

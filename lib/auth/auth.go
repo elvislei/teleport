@@ -25,7 +25,6 @@ package auth
 
 import (
 	"context"
-	"crypto"
 	"crypto/x509"
 	"fmt"
 	"net/url"
@@ -314,7 +313,7 @@ func (s *AuthServer) generateUserCert(req certRequest) (*certs, error) {
 	}
 	identity := tlsca.Identity{
 		Username: req.user.GetName(),
-		Groups:   req.roles.StringSlice(),
+		Groups:   req.roles.RoleNames(),
 	}
 	certRequest := tlsca.CertificateRequest{
 		Clock:     s.clock,
@@ -571,7 +570,7 @@ func (s *AuthServer) ClientCertPool() (*x509.CertPool, error) {
 	}
 	for _, auth := range authorities {
 		for _, keyPair := range auth.GetTLSKeyPairs() {
-			cert, err := tlsca.ParseCertificatePEM(keyPair.CertPEM)
+			cert, err := tlsca.ParseCertificatePEM(keyPair.Cert)
 			if err != nil {
 				return nil, trace.Wrap(err)
 			}
@@ -659,10 +658,10 @@ func (s *AuthServer) GenerateServerKeys(hostID string, nodeName string, roles te
 	}
 
 	return &PackedKeys{
-		Key:       privateKeyPEM,
-		Cert:      hostSSHCert,
-		TLSCert:   hostTLSCert,
-		TLSCACert: []byte(ca.GetTLSCert()),
+		Key:        privateKeyPEM,
+		Cert:       hostSSHCert,
+		TLSCert:    hostTLSCert,
+		TLSCACerts: services.TLSCerts(ca),
 	}, nil
 }
 
@@ -824,7 +823,7 @@ func (s *AuthServer) GetTokens() (tokens []services.ProvisionToken, err error) {
 }
 
 func (s *AuthServer) NewWebSession(username string) (services.WebSession, error) {
-	user, err := s.GetUser(userName)
+	user, err := s.GetUser(username)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

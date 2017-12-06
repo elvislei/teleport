@@ -1223,6 +1223,9 @@ type AccessChecker interface {
 	// HasRole checks if the checker includes the role
 	HasRole(role string) bool
 
+	// RoleNames returns a list of role names
+	RoleNames() []string
+
 	// CheckAccessToServer checks access to server.
 	CheckAccessToServer(login string, server Server) error
 
@@ -1357,8 +1360,8 @@ func MatchLabels(selector map[string]string, target map[string]string) bool {
 	return true
 }
 
-// StringSlice returns a slice with role names
-func (set RoleSet) StringSlice() []string {
+// RoleNames returns a slice with role names
+func (set RoleSet) RoleNames() []string {
 	out := make([]string, len(set))
 	for i, r := range set {
 		out[i] = r.GetName()

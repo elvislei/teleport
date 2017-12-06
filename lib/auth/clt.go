@@ -838,7 +838,7 @@ func (c *Client) CreateWebSession(user string) (services.WebSession, error) {
 
 // AuthenticateWebUser authenticates web user, creates and  returns web session
 // in case if authentication is successfull
-func (c *Client) AuthenticateWebUser(req AuthenticateWebUserRequest) (services.WebSession, error) {
+func (c *Client) AuthenticateWebUser(req AuthenticateUserRequest) (services.WebSession, error) {
 	out, err := c.PostJSON(
 		c.Endpoint("users", req.Username, "web", "authenticate"),
 		req,
@@ -851,7 +851,7 @@ func (c *Client) AuthenticateWebUser(req AuthenticateWebUserRequest) (services.W
 
 // AuthenticateSSHUser authenticates SSH console user, creates and  returns a pair of signed TLS and SSH
 // short lived certificates as a result
-func (c *Client) AuthenticateSSHUser(req AuthenticateSSHUserRequest) (*SSHLoginResponse, error) {
+func (c *Client) AuthenticateSSHUser(req AuthenticateSSHRequest) (*SSHLoginResponse, error) {
 	out, err := c.PostJSON(
 		c.Endpoint("users", req.Username, "ssh", "authenticate"),
 		req,
@@ -968,6 +968,7 @@ func (c *Client) GenerateHostCert(
 	return []byte(cert), nil
 }
 
+// DEPRECATE(2.5.0): obsolete due to TLS refactoring
 // GenerateUserCert takes the public key in the OpenSSH `authorized_keys` plain
 // text format, signs it using User Certificate Authority signing key and
 // returns the resulting certificate.
@@ -989,6 +990,7 @@ func (c *Client) GenerateUserCert(key []byte, user string, ttl time.Duration, co
 	return []byte(cert), nil
 }
 
+// DEPRECATE(2.5.0): obsolete due to TLS refactoring
 // GenerateUserCertBundle takes the public key in the OpenSSH `authorized_keys`
 // plain text format, signs it using User Certificate Authority signing key and
 // returns the resulting certificate. It also includes the host certificate that
@@ -1193,6 +1195,7 @@ func (c *Client) ValidateOIDCAuthCallback(q url.Values) (*OIDCAuthResponse, erro
 		Identity: rawResponse.Identity,
 		Cert:     rawResponse.Cert,
 		Req:      rawResponse.Req,
+		TLSCert:  rawResponse.TLSCert,
 	}
 	if len(rawResponse.Session) != 0 {
 		session, err := services.GetWebSessionMarshaler().UnmarshalWebSession(rawResponse.Session)
@@ -2001,8 +2004,8 @@ type ClientI interface {
 	GetDialer() AccessPointDialer
 	// AuthenticateWebUser authenticates web user, creates and  returns web session
 	// in case if authentication is successfull
-	AuthenticateWebUser(req AuthenticateWebUserRequest) (services.WebSession, error)
+	AuthenticateWebUser(req AuthenticateUserRequest) (services.WebSession, error)
 	// AuthenticateSSHUser authenticates SSH console user, creates and  returns a pair of signed TLS and SSH
 	// short lived certificates as a result
-	AuthenticateSSHUser(req AuthenticateSSHUserRequest) (*SSHLoginResponse, error)
+	AuthenticateSSHUser(req AuthenticateSSHRequest) (*SSHLoginResponse, error)
 }

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -179,6 +180,24 @@ type CertAuthority interface {
 	SetTLSKeyPairs(keyPairs []TLSKeyPair)
 	// GetTLSKeyPairs returns first PEM encoded TLS cert
 	GetTLSKeyPairs() []TLSKeyPair
+}
+
+// CertPool returns certificate pools from TLS certificates
+// set up in the certificate authority
+func CertPool(ca CertAuthority) (*x509.CertPool, error) {
+	keyPairs := ca.GetTLSKeyPairs()
+	if len(keyPairs) == 0 {
+		return nil, trace.BadParameter("certificate authority has no TLS certificates")
+	}
+	certPool := x509.NewCertPool()
+	for _, keyPair := range keyPairs {
+		cert, err := tlsca.ParseCertificatePEM(keyPair.Cert)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		certPool.AddCert(cert)
+	}
+	return certPool, nil
 }
 
 // TLSCerts returns TLS certificates from CA

@@ -62,20 +62,21 @@ type Dialer func(network, addr string) (net.Conn, error)
 // tunnel first, and then do HTTP-over-SSH. This client is wrapped by auth.TunClient
 // in lib/auth/tun.go
 type Client struct {
-	dialContext dialContext
+	dialContext DialContext
 	roundtrip.Client
 	transport *http.Transport
 }
 
-type dialContext func(in context.Context, network, _ string) (net.Conn, error)
+// DialContext is a function that dials to the specified address
+type DialContext func(in context.Context, network, addr string) (net.Conn, error)
 
-// NewTLSClient returns new client using TLS mutual authentication
-func NewTLSClient(addrs []utils.NetAddr, cfg *tls.Config, params ...roundtrip.ClientParam) (*Client, error) {
+// NewAddrDialer returns new dialer from a list of addresses
+func NewAddrDialer(addrs []utils.NetAddr) DialContext {
 	dialer := net.Dialer{
 		Timeout:   defaults.DefaultDialTimeout,
 		KeepAlive: defaults.ReverseTunnelAgentHeartbeatPeriod,
 	}
-	dialContext := func(in context.Context, network, _ string) (net.Conn, error) {
+	return func(in context.Context, network, _ string) (net.Conn, error) {
 		var err error
 		var conn net.Conn
 		for _, addr := range addrs {
@@ -87,6 +88,11 @@ func NewTLSClient(addrs []utils.NetAddr, cfg *tls.Config, params ...roundtrip.Cl
 		// not wrapping on purpose to preserve the original error
 		return nil, err
 	}
+}
+
+// NewTLSClientWithDialer returns new TLS client that uses mutual TLS authenticate
+// and dials the remote server using dialer
+func NewTLSClientWithDialer(dialContext DialContext, cfg *tls.Config, params ...roundtrip.ClientParam) (*Client, error) {
 	transport := &http.Transport{
 		// notice that below roundtrip.Client is passed
 		// teleport.APIEndpoint as an address for the API server, this is
@@ -116,6 +122,11 @@ func NewTLSClient(addrs []utils.NetAddr, cfg *tls.Config, params ...roundtrip.Cl
 		Client:      *roundtripClient,
 		transport:   transport,
 	}, nil
+}
+
+// NewTLSClient returns new client using TLS mutual authentication
+func NewTLSClient(addrs []utils.NetAddr, cfg *tls.Config, params ...roundtrip.ClientParam) (*Client, error) {
+	return NewTLSClientWithDialer(NewAddrDialer(addrs), cfg, params...)
 }
 
 // NewAuthClient returns a new instance of the client which talks to

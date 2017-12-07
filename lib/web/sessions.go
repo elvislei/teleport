@@ -17,6 +17,8 @@ limitations under the License.
 package web
 
 import (
+	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -31,12 +33,11 @@ import (
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/session"
 	"github.com/gravitational/teleport/lib/utils"
-	"github.com/jonboulle/clockwork"
 
 	"github.com/gravitational/trace"
 	"github.com/gravitational/ttlmap"
+	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
-
 	"github.com/tstranex/u2f"
 	"golang.org/x/crypto/ssh"
 )
@@ -188,7 +189,66 @@ func (c *SessionContext) GetUserClient(site reversetunnel.RemoteSite) (auth.Clie
 
 // newRemoteClient returns a client to a remote cluster with the role of
 // the logged in user.
-func (c *SessionContext) newRemoteClient(site reversetunnel.RemoteSite) (auth.ClientI, net.Conn, error) {
+func (c *SessionContext) newRemoteClient(cluster reversetunnel.RemoteSite) (auth.ClientI, net.Conn, error) {
+	clt, err := c.tryRemoteTLSClient(cluster)
+	if err == nil {
+		log.Debugf("using TLS client to %v", cluster.GetName())
+		return clt, nil, nil
+	}
+	log.Debugf("could not use TLS client to %v, error: %v", cluster.GetName(), err)
+	return c.newRemoteTunClient(cluster)
+}
+
+// clusterDialer returns DialContext function using cluster's dial function
+func clusterDialer(remoteCluster reversetunnel.RemoteSite) auth.DialContext {
+	return func(in context.Context, network, _ string) (net.Conn, error) {
+		// we tell the remote site we want a connection to the auth server by using
+		// a non-resolvable string @remote-auth-server as the destination.
+		srcAddr := utils.NetAddr{Addr: "web.get-remote-client-with-user-role", AddrNetwork: network}
+		dstAddr := utils.NetAddr{Addr: reversetunnel.RemoteAuthServer, AddrNetwork: network}
+		return remoteCluster.Dial(&srcAddr, &dstAddr)
+	}
+}
+
+// tryRemoteTLSClient tries creating TLS client and using it (the client may not be available
+// due to older clusters), returns client if it is working properly
+func (c *SessionContext) tryRemoteTLSClient(cluster reversetunnel.RemoteSite) (auth.ClientI, error) {
+	clt, err := c.newRemoteTLSClient(cluster)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	_, err = clt.GetDomainName()
+	if err != nil {
+		return clt, trace.Wrap(err)
+	}
+	return clt, nil
+}
+
+func (c *SessionContext) newRemoteTLSClient(cluster reversetunnel.RemoteSite) (auth.ClientI, error) {
+	ca, err := c.parent.proxyClient.GetCertAuthority(services.CertAuthID{
+		Type:       services.HostCA,
+		DomainName: cluster.GetName(),
+	}, false)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	certPool, err := services.CertPool(ca)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	tlsConfig := utils.TLSConfig()
+	tlsCert, err := tls.X509KeyPair(c.sess.GetTLSCert(), c.sess.GetPriv())
+	if err != nil {
+		return nil, trace.Wrap(err, "failed to parse TLS cert and key")
+	}
+	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+	tlsConfig.RootCAs = certPool
+	return auth.NewTLSClientWithDialer(clusterDialer(cluster), tlsConfig)
+}
+
+// newRemoteTunClient returns a client using legacy SSH tunnel authentication to a remote cluster with the role of
+// the logged in user
+func (c *SessionContext) newRemoteTunClient(site reversetunnel.RemoteSite) (auth.ClientI, net.Conn, error) {
 	var err error
 	var netConn net.Conn
 
